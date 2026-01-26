@@ -234,7 +234,8 @@ function createMcpServer() {
 }
 
 // Setup the Express app with A2A routes using specific middlewares
-export const app: express.Express = express();
+const app: express.Express = express();
+export { app };
 
 // Add agent card handler at well-known path (no payment required for A2A discovery)
 app.use(
@@ -307,3 +308,6 @@ export async function startServer(port?: number) {
 
   return server;
 }
+
+// Default export for Vercel
+export default app;
