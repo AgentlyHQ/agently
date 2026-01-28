@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the `@agently/8004` package will be documented in this file.
+All notable changes to the `@agentlyhq/8004` package will be documented in this file.
 
 ## 26 Jan 2026
 
@@ -29,10 +29,11 @@ All notable changes to the `@agently/8004` package will be documented in this fi
 
 ```solidity
 // V1 (IdentityRegistryAbi_V1)
-function getAgentWallet(uint256 agentId) external view returns (address)
+function getAgentWallet(uint256 agentId) external view returns (bytes memory)
 
 // V2 (IdentityRegistryAbi_V2)
-function getAgentWallet(uint256 agentId) external view returns (bytes memory)
+function getAgentWallet(uint256 agentId) external view returns (address)
+
 ```
 
 ---
