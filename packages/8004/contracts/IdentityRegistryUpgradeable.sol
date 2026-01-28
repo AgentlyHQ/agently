@@ -1,4 +1,4 @@
-// As copied from https://github.com/erc-8004/erc-8004-contracts/blob/cdf1383f888aa0a175b118782aaa83a94bfafe2a/contracts/IdentityRegistryUpgradeable.sol
+// As copied from https://github.com/erc-8004/erc-8004-contracts/blob/093d7b91eb9c22048d411896ed397d695742a5f8/contracts/IdentityRegistryUpgradeable.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -29,7 +29,7 @@ contract IdentityRegistryUpgradeable is
 
     // keccak256(abi.encode(uint256(keccak256("erc8004.identity.registry")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant IDENTITY_REGISTRY_STORAGE_LOCATION =
-        0xa040f782729de4970518741823ec1276cbcd41a0c7493f62d173341566a04e00;
+    0xa040f782729de4970518741823ec1276cbcd41a0c7493f62d173341566a04e00;
 
     function _getIdentityRegistryStorage() private pure returns (IdentityRegistryStorage storage $) {
         assembly {
@@ -42,7 +42,7 @@ contract IdentityRegistryUpgradeable is
     event URIUpdated(uint256 indexed agentId, string newURI, address indexed updatedBy);
 
     bytes32 private constant AGENT_WALLET_SET_TYPEHASH =
-        keccak256("AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 deadline)");
+    keccak256("AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 deadline)");
     bytes4 private constant ERC1271_MAGICVALUE = 0x1626ba7e;
     uint256 private constant MAX_DEADLINE_DELAY = 5 minutes;
     bytes32 private constant RESERVED_AGENT_WALLET_KEY_HASH = keccak256("agentWallet");
@@ -124,9 +124,10 @@ contract IdentityRegistryUpgradeable is
         emit URIUpdated(agentId, newURI, msg.sender);
     }
 
-    function getAgentWallet(uint256 agentId) external view returns (bytes memory) {
+    function getAgentWallet(uint256 agentId) external view returns (address) {
         IdentityRegistryStorage storage $ = _getIdentityRegistryStorage();
-        return $._metadata[agentId]["agentWallet"];
+        bytes memory walletData = $._metadata[agentId]["agentWallet"];
+        return address(bytes20(walletData));
     }
 
     function setAgentWallet(
@@ -149,18 +150,14 @@ contract IdentityRegistryUpgradeable is
         bytes32 structHash = keccak256(abi.encode(AGENT_WALLET_SET_TYPEHASH, agentId, newWallet, owner, deadline));
         bytes32 digest = _hashTypedDataV4(structHash);
 
-        // Try ECDSA first, fallback to ERC1271 if wallet has code
-        address recovered = ECDSA.recover(digest, signature);
-        if (recovered != newWallet) {
-            require(newWallet.code.length > 0, "invalid wallet sig");
-            // Use staticcall to prevent reentrancy during signature verification
-            (bool success, bytes memory result) = newWallet.staticcall(
+        // Try ECDSA first (EOAs + EIP-7702 delegated EOAs)
+        (address recovered, ECDSA.RecoverError err, ) = ECDSA.tryRecover(digest, signature);
+        if (err != ECDSA.RecoverError.NoError || recovered != newWallet) {
+            // ECDSA failed, try ERC1271 (smart contract wallets)
+            (bool ok, bytes memory res) = newWallet.staticcall(
                 abi.encodeCall(IERC1271.isValidSignature, (digest, signature))
             );
-            require(
-                success && result.length >= 32 && abi.decode(result, (bytes4)) == ERC1271_MAGICVALUE,
-                "invalid wallet sig"
-            );
+            require(ok && res.length >= 32 && abi.decode(res, (bytes4)) == ERC1271_MAGICVALUE, "invalid wallet sig");
         }
 
         IdentityRegistryStorage storage $ = _getIdentityRegistryStorage();
@@ -200,6 +197,15 @@ contract IdentityRegistryUpgradeable is
         }
 
         return super._update(to, tokenId, auth);
+    }
+
+    /**
+     * @notice Checks if spender is owner or approved for the agent
+     * @dev Reverts with ERC721NonexistentToken if agent doesn't exist
+     */
+    function isAuthorizedOrOwner(address spender, uint256 agentId) external view returns (bool) {
+        address owner = ownerOf(agentId);
+        return _isAuthorized(owner, spender, agentId);
     }
 
     function getVersion() external pure returns (string memory) {

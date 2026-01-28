@@ -1,4 +1,4 @@
-// As copied from https://github.com/erc-8004/erc-8004-contracts/blob/cdf1383f888aa0a175b118782aaa83a94bfafe2a/contracts/ValidationRegistryUpgradeable.sol
+// As copied from https://github.com/erc-8004/erc-8004-contracts/blob/093d7b91eb9c22048d411896ed397d695742a5f8/contracts/ValidationRegistryUpgradeable.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -150,8 +150,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         string calldata tag
     ) external view returns (uint64 count, uint8 avgResponse) {
         ValidationRegistryStorage storage $ = _getValidationRegistryStorage();
-        uint256 totalResponse = 0;
-        count = 0;
+        uint256 totalResponse;
 
         bytes32[] storage requestHashes = $._agentValidations[agentId];
 
@@ -161,7 +160,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
             // Filter by validator if specified
             bool matchValidator = (validatorAddresses.length == 0);
             if (!matchValidator) {
-                for (uint256 j = 0; j < validatorAddresses.length; j++) {
+                for (uint256 j; j < validatorAddresses.length; j++) {
                     if (s.validatorAddress == validatorAddresses[j]) {
                         matchValidator = true;
                         break;
