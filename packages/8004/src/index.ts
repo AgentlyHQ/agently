@@ -1,0 +1,76 @@
+// =============================================================================
+// ABIs (versioned) - Pin to specific version for stability
+// =============================================================================
+
+export { IdentityRegistryAbi_V1 } from "../abis/IdentityRegistry_V1";
+export { IdentityRegistryAbi_V2 } from "../abis/IdentityRegistry_V2";
+
+export { ReputationRegistryAbi_V1 } from "../abis/ReputationRegistry_V1";
+export { ReputationRegistryAbi_V2 } from "../abis/ReputationRegistry_V2";
+export { ReputationRegistryAbi_V3 } from "../abis/ReputationRegistry_V3";
+
+export { ValidationRegistryAbi_V1 } from "../abis/ValidationRegistry_V1";
+
+// =============================================================================
+// ABIs (latest) - Convenience exports
+// WARNING: These may introduce breaking changes. Pin to versioned exports for stability.
+// =============================================================================
+
+/** Use IdentityRegistryAbi_V2 to pin the current version. This export may change. */
+export { IdentityRegistryAbi_V2 as IdentityRegistryAbi } from "../abis/IdentityRegistry_V2";
+
+/** Use ReputationRegistryAbi_V3 to pin the current version. This export may change. */
+export { ReputationRegistryAbi_V3 as ReputationRegistryAbi } from "../abis/ReputationRegistry_V3";
+
+/** Use ValidationRegistryAbi_V1 to pin the current version. This export may change. */
+export { ValidationRegistryAbi_V1 as ValidationRegistryAbi } from "../abis/ValidationRegistry_V1";
+
+// Chain ID constants
+export const CHAIN_ID = {
+  SEPOLIA: 11155111,
+  BASE_SEPOLIA: 84532,
+} as const;
+
+export type SupportedChainId = (typeof CHAIN_ID)[keyof typeof CHAIN_ID];
+
+// Contract addresses by chain
+export const ADDRESSES = {
+  [CHAIN_ID.SEPOLIA]: {
+    identityRegistry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    reputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    validationRegistry: "0x8004Cb1BF31DAf7788923b405b754f57acEB4272",
+  },
+  [CHAIN_ID.BASE_SEPOLIA]: {
+    identityRegistry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    reputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    validationRegistry: "0x8004Cb1BF31DAf7788923b405b754f57acEB4272",
+  },
+} as const;
+
+export type ContractAddresses = (typeof ADDRESSES)[SupportedChainId];
+
+function isSupportedChainId(chainId: number): chainId is SupportedChainId {
+  return Object.values(CHAIN_ID).includes(chainId as SupportedChainId);
+}
+
+// Helper function to get addresses by chain ID
+export function getRegistryAddress(chainId: number): ContractAddresses {
+  if (isSupportedChainId(chainId) === false) {
+    throw new Error(`Unsupported chain ID: ${chainId}.`);
+  }
+
+  return ADDRESSES[chainId];
+}
+
+// Individual address getters
+export function getIdentityRegistryAddress(chainId: number): string {
+  return getRegistryAddress(chainId).identityRegistry;
+}
+
+export function getReputationRegistryAddress(chainId: number): string {
+  return getRegistryAddress(chainId).reputationRegistry;
+}
+
+export function getValidationRegistryAddress(chainId: number): string {
+  return getRegistryAddress(chainId).validationRegistry;
+}

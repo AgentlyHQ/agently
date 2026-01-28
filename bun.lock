@@ -100,8 +100,8 @@
       },
     },
     "packages/8004": {
-      "name": "@agentlyhq/8004",
-      "version": "0.0.0",
+      "name": "@agently/8004",
+      "version": "0.1.0",
     },
     "packages/aixyz": {
       "name": "aixyz",
@@ -120,7 +120,7 @@
 
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, "sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ=="],
 
-    "@agentlyhq/8004": ["@agentlyhq/8004@workspace:packages/8004"],
+    "@agently/8004": ["@agently/8004@workspace:packages/8004"],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.22", "", { "dependencies": { "@ai-sdk/provider": "3.0.5", "@ai-sdk/provider-utils": "4.0.9", "@vercel/oidc": "3.1.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-NgnlY73JNuooACHqUIz5uMOEWvqR1MMVbb2soGLMozLY1fgwEIF5iJFDAGa5/YArlzw2ATVU7zQu7HkR/FUjgA=="],
 
