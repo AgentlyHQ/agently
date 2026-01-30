@@ -9,7 +9,7 @@ import {
   InMemoryTaskStore,
 } from "@a2a-js/sdk/server";
 import { jsonRpcHandler, agentCardHandler, UserBuilder } from "@a2a-js/sdk/server/express";
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { x402ResourceServer } from "@x402/express";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
@@ -18,6 +18,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import { agent } from "./agent";
 import { executeSearchFlights, POPULAR_DESTINATIONS, type SearchFlightsInput } from "./tools";
+import { initializeStripe, createPaymentIntent } from "./stripe";
+import { unifiedPaymentMiddleware } from "./payment-middleware";
 
 // Define the agent card metadata
 const agentCard: AgentCard = {
@@ -277,8 +279,29 @@ app.use(
   }),
 );
 
-// Apply x402 payment middleware to protect the root JSON-RPC endpoint
-app.use(paymentMiddleware(x402Routes, resourceServer));
+// Create PaymentIntent for client-side payment flow
+app.post("/stripe/create-payment-intent", express.json(), async (req, res) => {
+  try {
+    const result = await createPaymentIntent({
+      priceInCents: Number(process.env.STRIPE_PRICE_CENTS) || 100,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to create payment intent" });
+  }
+});
+
+// Apply unified payment middleware to protect the root JSON-RPC and MCP endpoints
+const stripeEnabled = !!process.env.STRIPE_SECRET_KEY;
+app.use(
+  unifiedPaymentMiddleware({
+    x402: { routes: x402Routes, resourceServer },
+    stripe: {
+      enabled: stripeEnabled,
+      priceInCents: Number(process.env.STRIPE_PRICE_CENTS) || 100,
+    },
+  }),
+);
 
 // Add JSON-RPC handler at root (protected by x402 payment)
 app.use(
@@ -312,7 +335,10 @@ app.post("/mcp", express.json(), async (req, res) => {
 let initializationPromise: Promise<void> | null = null;
 export async function initializeApp() {
   if (!initializationPromise) {
-    initializationPromise = resourceServer.initialize();
+    initializationPromise = (async () => {
+      await resourceServer.initialize();
+      initializeStripe(); // Initialize Stripe if configured
+    })();
   }
   return initializationPromise;
 }

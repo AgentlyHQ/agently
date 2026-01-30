@@ -11,6 +11,7 @@ An AI-powered travel agent that finds the cheapest flights between multiple depa
 - Support multiple currencies (USD, EUR, BRL, etc.)
 - Get discount information compared to average prices
 - Direct booking links to Skyscanner
+- **Dual payment support**: x402 (crypto) and Stripe (credit card)
 
 ## Quick Start
 
@@ -28,23 +29,324 @@ bun run dev
 
 ## Environment Variables
 
-| Variable               | Description                     | Default                          |
-| ---------------------- | ------------------------------- | -------------------------------- |
-| `OPENAI_API_KEY`       | OpenAI API key for GPT-4o-mini  | Required                         |
-| `PORT`                 | Server port                     | 3000                             |
-| `AGENT_URL`            | Public URL of the agent         | http://localhost:3000/           |
-| `X402_AMOUNT`          | Payment amount per request      | $0.001                           |
-| `X402_NETWORK`         | Blockchain network for payments | eip155:84532                     |
-| `X402_PAYMENT_ADDRESS` | Address to receive payments     | -                                |
-| `X402_FACILITATOR_URL` | x402 facilitator URL            | https://www.x402.org/facilitator |
+| Variable                 | Description                        | Default                          |
+| ------------------------ | ---------------------------------- | -------------------------------- |
+| `OPENAI_API_KEY`         | OpenAI API key for GPT-4o-mini     | Required                         |
+| `PORT`                   | Server port                        | 3000                             |
+| `AGENT_URL`              | Public URL of the agent            | http://localhost:3000/           |
+| **x402 (Crypto)**        |                                    |                                  |
+| `X402_AMOUNT`            | Payment amount per request         | $0.001                           |
+| `X402_NETWORK`           | Blockchain network for payments    | eip155:84532                     |
+| `X402_PAYMENT_ADDRESS`   | Address to receive payments        | -                                |
+| `X402_FACILITATOR_URL`   | x402 facilitator URL               | https://www.x402.org/facilitator |
+| **Stripe (Credit Card)** |                                    |                                  |
+| `STRIPE_SECRET_KEY`      | Stripe secret key (enables Stripe) | -                                |
+| `STRIPE_PRICE_CENTS`     | Price per request in cents         | 100                              |
 
 ## API Endpoints
 
-| Endpoint                       | Description                           |
-| ------------------------------ | ------------------------------------- |
-| `/.well-known/agent-card.json` | A2A agent card metadata               |
-| `POST /`                       | JSON-RPC endpoint for A2A protocol    |
-| `POST /mcp`                    | MCP (Model Context Protocol) endpoint |
+| Endpoint                             | Auth    | Description                               |
+| ------------------------------------ | ------- | ----------------------------------------- |
+| `/.well-known/agent-card.json`       | Public  | A2A agent card metadata                   |
+| `POST /stripe/create-payment-intent` | Public  | Create PaymentIntent for client-side flow |
+| `POST /`                             | Payment | JSON-RPC endpoint for A2A protocol        |
+| `POST /mcp`                          | Payment | MCP (Model Context Protocol) endpoint     |
+
+## Payment Methods
+
+This agent supports two payment methods. Protected endpoints require one of these:
+
+### Option 1: x402 (Cryptocurrency)
+
+Pay with USDC on Base network. Include the payment proof in the header:
+
+```bash
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -H "X-Payment: <x402-payment-proof>" \
+  -d '{"jsonrpc": "2.0", "method": "message/send", ...}'
+```
+
+### Option 2: Stripe (Credit Card)
+
+Pay with credit card via Stripe Elements. Each payment is **single-use** (one payment = one API request).
+
+#### Payment Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         CLIENT                                  │
+│  1. POST /stripe/create-payment-intent → get clientSecret      │
+│  2. Render <PaymentElement /> with clientSecret                │
+│  3. User enters card details and clicks Pay                    │
+│  4. stripe.confirmPayment() → paymentIntent.id                 │
+│  5. Store paymentIntent.id for API call                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ X-Stripe-Payment-Intent-Id: pi_xxx
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         BACKEND                                 │
+│  1. Receive PaymentIntent ID in header                         │
+│  2. Validate: status === "succeeded"                           │
+│  3. Validate: amount >= expected price                         │
+│  4. Validate: metadata.expected_amount exists (our system)     │
+│  5. Check: metadata.consumed !== "true"                        │
+│  6. Mark consumed & allow API access                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Security Features
+
+| Protection              | Description                                             |
+| ----------------------- | ------------------------------------------------------- |
+| **Amount verification** | Rejects PaymentIntents with amount less than configured |
+| **Origin verification** | Only accepts PaymentIntents created by this backend     |
+| **Single-use**          | Each PaymentIntent can only be used for one API request |
+| **Stripe validation**   | All PaymentIntents are verified against Stripe's API    |
+
+#### Quick Start
+
+```bash
+# 1. Create a PaymentIntent (returns clientSecret for frontend)
+curl -X POST http://localhost:3000/stripe/create-payment-intent
+# Returns: {"clientSecret": "pi_xxx_secret_xxx", "paymentIntentId": "pi_xxx"}
+
+# 2. Use clientSecret with Stripe.js to render PaymentElement and confirm payment
+
+# 3. Use PaymentIntent ID for your API request
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -H "X-Stripe-Payment-Intent-Id: pi_xxx" \
+  -d '{"jsonrpc": "2.0", "method": "message/send", ...}'
+```
+
+### Client-Side Implementation (React)
+
+Install the required packages:
+
+```bash
+npm install @stripe/stripe-js @stripe/react-stripe-js
+```
+
+Here's a complete React example using Stripe Elements:
+
+```tsx
+import { useState } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+
+// Initialize Stripe with your publishable key
+const stripePromise = loadStripe("pk_test_xxx");
+
+// API base URL
+const API_URL = "http://localhost:3000";
+
+interface PaymentFlowProps {
+  onApiResponse?: (response: unknown) => void;
+}
+
+export function PaymentFlow({ onApiResponse }: PaymentFlowProps) {
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Step 1: Create PaymentIntent and get clientSecret
+  const startPayment = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/stripe/create-payment-intent`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to create payment intent");
+      const data = await res.json();
+      setClientSecret(data.clientSecret);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Payment setup failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Handle successful payment
+  const onPaymentSuccess = (id: string) => {
+    setPaymentIntentId(id);
+    setClientSecret(null);
+  };
+
+  // Step 3: Use PaymentIntent ID for API call
+  const callApi = async (prompt: string) => {
+    if (!paymentIntentId) return;
+
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Stripe-Payment-Intent-Id": paymentIntentId,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "message/send",
+          params: {
+            message: {
+              role: "user",
+              parts: [{ kind: "text", text: prompt }],
+            },
+          },
+          id: 1,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Payment was rejected (already used, invalid, etc.)
+        setError(data.message || "API request failed");
+        return;
+      }
+
+      setPaymentIntentId(null); // Clear after successful use (single-use)
+      onApiResponse?.(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "API request failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show payment form
+  if (clientSecret) {
+    return (
+      <Elements stripe={stripePromise} options={{ clientSecret }}>
+        <CheckoutForm
+          onSuccess={onPaymentSuccess}
+          onError={(msg) => {
+            setError(msg);
+            setClientSecret(null);
+          }}
+        />
+      </Elements>
+    );
+  }
+
+  // Show main UI
+  return (
+    <div>
+      {error && <div style={{ color: "red", marginBottom: 16 }}>{error}</div>}
+
+      {!paymentIntentId ? (
+        <button onClick={startPayment} disabled={loading}>
+          {loading ? "Loading..." : "Pay $1.00 to Search Flights"}
+        </button>
+      ) : (
+        <div>
+          <p>Payment successful! You can now search for flights.</p>
+          <button onClick={() => callApi("Find cheap flights from NYC to London")} disabled={loading}>
+            {loading ? "Searching..." : "Search Flights"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CheckoutFormProps {
+  onSuccess: (paymentIntentId: string) => void;
+  onError: (message: string) => void;
+}
+
+function CheckoutForm({ onSuccess, onError }: CheckoutFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setLoading(true);
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+    });
+    setLoading(false);
+
+    if (error) {
+      onError(error.message || "Payment failed");
+      return;
+    }
+
+    if (paymentIntent?.status === "succeeded") {
+      onSuccess(paymentIntent.id);
+    } else {
+      onError("Payment was not completed");
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement />
+      <button type="submit" disabled={!stripe || loading} style={{ marginTop: 16 }}>
+        {loading ? "Processing..." : "Pay"}
+      </button>
+    </form>
+  );
+}
+```
+
+#### Usage in Your App
+
+```tsx
+import { PaymentFlow } from "./PaymentFlow";
+
+function App() {
+  return (
+    <PaymentFlow
+      onApiResponse={(response) => {
+        console.log("Flight search results:", response);
+      }}
+    />
+  );
+}
+```
+
+### Testing
+
+#### Test Cards
+
+Use these [Stripe test cards](https://docs.stripe.com/testing#cards):
+
+| Card Number      | Description        |
+| ---------------- | ------------------ |
+| 4242424242424242 | Succeeds           |
+| 4000000000000002 | Card declined      |
+| 4000002500003155 | Requires 3D Secure |
+
+#### Manual Testing with cURL
+
+```bash
+# 1. Create a PaymentIntent via the backend
+curl -X POST http://localhost:3000/stripe/create-payment-intent
+
+# 2. Note the paymentIntentId from the response
+# 3. Complete payment in your frontend with Stripe.js
+# 4. Use the PaymentIntent ID:
+
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -H "X-Stripe-Payment-Intent-Id: pi_xxx" \
+  -d '{"jsonrpc":"2.0","method":"message/send","params":{"message":{"role":"user","parts":[{"kind":"text","text":"Find flights from NYC to London"}]}},"id":1}'
+
+# First request: succeeds
+# Second request with same ID: "Payment already used"
+```
+
+> **Note:** PaymentIntents created directly via Stripe CLI or Dashboard won't work because they lack the required `expected_amount` metadata that our backend uses to verify the payment was created through our system.
 
 ## Usage Examples
 
