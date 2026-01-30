@@ -18,7 +18,7 @@ mock.module("@inquirer/prompts", () => ({
 }));
 
 // Import after mocking
-const { decryptKeystore, getKeystoreAddress, createKeystoreWallet } = await import("./keystore.js");
+const { decryptKeystore, createKeystoreWallet } = await import("./keystore.js");
 
 beforeAll(() => {
   const json = encryptKeystoreJsonSync({ address: TEST_ADDRESS, privateKey: TEST_PRIVATE_KEY }, TEST_PASSWORD, {
@@ -42,13 +42,6 @@ describe("decryptKeystore", () => {
     const invalidPath = join(testDir, "invalid-keystore.json");
     writeFileSync(invalidPath, JSON.stringify({ not: "a keystore" }));
     await expect(decryptKeystore(invalidPath)).rejects.toThrow("Invalid keystore file");
-  });
-});
-
-describe("getKeystoreAddress", () => {
-  test("returns correct address", async () => {
-    const address = await getKeystoreAddress(testKeystorePath);
-    expect(address).toBe(TEST_ADDRESS);
   });
 });
 

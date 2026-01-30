@@ -12,7 +12,8 @@ export interface BrowserSignParams {
 export async function signWithBrowser(params: BrowserSignParams): Promise<{ txHash: string }> {
   const { registryAddress, calldata, chainId, chainName, uri, gas } = params;
 
-  const html = buildHtml({ registryAddress, calldata, chainId, chainName, uri, gas });
+  const nonce = crypto.randomUUID();
+  const html = buildHtml({ registryAddress, calldata, chainId, chainName, uri, gas, nonce });
 
   const { promise: resultPromise, resolve, reject } = Promise.withResolvers<{ txHash: string }>();
   let settled = false;
@@ -47,7 +48,7 @@ export async function signWithBrowser(params: BrowserSignParams): Promise<{ txHa
         return new Response(html, { headers: { "Content-Type": "text/html" } });
       }
 
-      if (req.method === "POST" && url.pathname === "/result") {
+      if (req.method === "POST" && url.pathname === `/result/${nonce}`) {
         if (settled) {
           return new Response(JSON.stringify({ ok: true, ignored: true }), { headers: jsonHeaders });
         }
@@ -117,8 +118,9 @@ function buildHtml(params: {
   chainName: string;
   uri?: string;
   gas?: bigint;
+  nonce: string;
 }): string {
-  const { registryAddress, calldata, chainId, chainName, uri, gas } = params;
+  const { registryAddress, calldata, chainId, chainName, uri, gas, nonce } = params;
   const chainIdHex = `0x${chainId.toString(16)}`;
 
   const displayUri = uri && uri.length > 80 ? uri.slice(0, 80) + "..." : (uri ?? "");
@@ -687,7 +689,7 @@ function buildHtml(params: {
       statusEl.className = "status success";
       registerBtn.textContent = "Sent!";
 
-      await fetch("/result", {
+      await fetch("/result/" + ${JSON.stringify(nonce)}, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ txHash }),

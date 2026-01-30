@@ -77,8 +77,8 @@ Examples:
       if (error instanceof Error && error.name === "ExitPromptError") {
         process.exit(130);
       }
-      // Re-throw unexpected errors with full stack trace
-      throw error;
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
     }
   });
 

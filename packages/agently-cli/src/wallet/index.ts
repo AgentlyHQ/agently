@@ -11,7 +11,7 @@ export interface WalletOptions {
 export type WalletMethod =
   | { type: "keystore"; path: string }
   | { type: "browser" }
-  | { type: "privatekey"; key: string };
+  | { type: "privatekey"; resolveKey: () => Promise<string> };
 
 export async function selectWalletMethod(options: WalletOptions): Promise<WalletMethod> {
   // Check explicit options first
@@ -25,8 +25,9 @@ export async function selectWalletMethod(options: WalletOptions): Promise<Wallet
   // Check for PRIVATE_KEY environment variable
   const envPrivateKey = process.env.PRIVATE_KEY;
   if (envPrivateKey) {
+    delete process.env.PRIVATE_KEY;
     console.warn("Warning: Using PRIVATE_KEY from environment variable");
-    return { type: "privatekey", key: envPrivateKey };
+    return { type: "privatekey", resolveKey: () => Promise.resolve(envPrivateKey) };
   }
 
   // Interactive: prompt user to choose
@@ -55,7 +56,7 @@ export async function selectWalletMethod(options: WalletOptions): Promise<Wallet
         mask: "*",
       });
       console.warn("Warning: Using raw private key is not recommended for production");
-      return { type: "privatekey", key };
+      return { type: "privatekey", resolveKey: () => Promise.resolve(key) };
     }
     default:
       throw new Error("No wallet method selected");
@@ -69,7 +70,7 @@ export async function createWalletFromMethod(
 ): Promise<WalletClient> {
   switch (method.type) {
     case "privatekey":
-      return createPrivateKeyWallet(method.key, chain, rpcUrl);
+      return createPrivateKeyWallet(await method.resolveKey(), chain, rpcUrl);
     case "keystore":
       return createKeystoreWallet(method.path, chain, rpcUrl);
     case "browser":

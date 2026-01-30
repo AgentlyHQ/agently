@@ -19,12 +19,6 @@ export async function decryptKeystore(keystorePath: string): Promise<`0x${string
   return account.privateKey as `0x${string}`;
 }
 
-export async function getKeystoreAddress(keystorePath: string): Promise<`0x${string}`> {
-  const privateKey = await decryptKeystore(keystorePath);
-  const account = privateKeyToAccount(privateKey);
-  return account.address;
-}
-
 export async function createKeystoreWallet(keystorePath: string, chain: Chain, rpcUrl?: string): Promise<WalletClient> {
   const privateKey = await decryptKeystore(keystorePath);
   const account = privateKeyToAccount(privateKey);

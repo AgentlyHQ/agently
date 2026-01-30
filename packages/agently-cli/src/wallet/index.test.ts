@@ -37,7 +37,9 @@ describe("selectWalletMethod", () => {
     process.env.PRIVATE_KEY = TEST_PRIVATE_KEY;
     const options: WalletOptions = {};
     const result = await selectWalletMethod(options);
-    expect(result).toEqual({ type: "privatekey", key: TEST_PRIVATE_KEY });
+    expect(result.type).toBe("privatekey");
+    expect(result.type === "privatekey" && (await result.resolveKey())).toBe(TEST_PRIVATE_KEY);
+    expect(process.env.PRIVATE_KEY).toBeUndefined();
   });
 
   test("keystore option takes precedence over env var", async () => {
@@ -57,7 +59,7 @@ describe("selectWalletMethod", () => {
 
 describe("createWalletFromMethod", () => {
   test("creates wallet for privatekey method", async () => {
-    const method = { type: "privatekey" as const, key: TEST_PRIVATE_KEY };
+    const method = { type: "privatekey" as const, resolveKey: () => Promise.resolve(TEST_PRIVATE_KEY) };
     const wallet = await createWalletFromMethod(method, sepolia);
     expect(wallet).toBeDefined();
     expect(wallet.account).toBeDefined();
