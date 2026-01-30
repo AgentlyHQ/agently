@@ -1,0 +1,198 @@
+import { createPublicClient, encodeFunctionData, formatEther, http, parseEventLogs, type Chain } from "viem";
+import { mainnet, sepolia, baseSepolia, foundry } from "viem/chains";
+import { IdentityRegistryAbi, getIdentityRegistryAddress, CHAIN_ID } from "@agentlyhq/8004";
+import { select } from "@inquirer/prompts";
+import { selectWalletMethod, type WalletOptions } from "../wallet/index.js";
+import { signTransaction } from "../wallet/sign.js";
+import { CliError, resolveUri } from "../utils.js";
+import { startSpinner } from "../utils/spinner.js";
+import chalk from "chalk";
+import boxen from "boxen";
+
+interface ChainConfig {
+  chain: Chain;
+  chainId: number;
+}
+
+const CHAINS: Record<string, ChainConfig> = {
+  mainnet: { chain: mainnet, chainId: CHAIN_ID.MAINNET },
+  sepolia: { chain: sepolia, chainId: CHAIN_ID.SEPOLIA },
+  "base-sepolia": { chain: baseSepolia, chainId: CHAIN_ID.BASE_SEPOLIA },
+  localhost: { chain: foundry, chainId: 31337 },
+};
+
+export interface RegisterOptions extends WalletOptions {
+  uri?: string;
+  chain?: string;
+  rpcUrl?: string;
+  registry?: string;
+}
+
+export async function register(options: RegisterOptions): Promise<void> {
+  const chainName = options.chain ?? (await selectChain());
+
+  const chainConfig = CHAINS[chainName];
+  if (!chainConfig) {
+    throw new CliError(`Unsupported chain: ${chainName}. Supported chains: ${Object.keys(CHAINS).join(", ")}`);
+  }
+
+  // Resolve URI (convert file path to base64 data URI if needed)
+  const resolvedUri = options.uri ? resolveUri(options.uri) : undefined;
+
+  if (options.uri && resolvedUri !== options.uri) {
+    console.log(`Resolved ${options.uri} to data URI (${resolvedUri!.length} chars)`);
+  }
+
+  let registryAddress: `0x${string}`;
+  if (options.registry) {
+    registryAddress = options.registry as `0x${string}`;
+  } else if (chainName === "localhost") {
+    throw new CliError("--registry is required for localhost (no default contract deployment)");
+  } else {
+    registryAddress = getIdentityRegistryAddress(chainConfig.chainId) as `0x${string}`;
+  }
+
+  // Encode calldata once for all paths
+  const data = encodeFunctionData({
+    abi: IdentityRegistryAbi,
+    functionName: "register",
+    args: resolvedUri ? [resolvedUri] : [],
+  });
+
+  // Determine wallet method (may prompt user interactively)
+  const walletMethod = await selectWalletMethod(options);
+
+  if (walletMethod.type === "browser" && options.rpcUrl) {
+    throw new CliError("--rpc-url cannot be used with browser wallet. The browser wallet uses its own RPC endpoint.");
+  }
+
+  const label = (text: string) => chalk.dim(text.padEnd(14));
+
+  console.log("");
+  console.log(chalk.dim("Signing transaction..."));
+  console.log(`  ${label("To")}${registryAddress}`);
+  console.log(`  ${label("Data")}${data.slice(0, 10)}${chalk.dim("…" + data.length + " bytes")}`);
+  console.log(`  ${label("Chain")}${chainName}`);
+  console.log(`  ${label("Function")}${resolvedUri ? "register(string memory agentURI)" : "register()"}`);
+  if (resolvedUri) {
+    const displayUri = resolvedUri.length > 80 ? resolvedUri.slice(0, 80) + "…" : resolvedUri;
+    console.log(`  ${label("URI")}${displayUri}`);
+  }
+  console.log("");
+  const result = await signTransaction({
+    walletMethod,
+    tx: { to: registryAddress, data },
+    chain: chainConfig.chain,
+    rpcUrl: options.rpcUrl,
+    options: {
+      browser: { chainId: chainConfig.chainId, chainName: chainName, uri: resolvedUri },
+    },
+  });
+  console.log(`${chalk.green("✓")} Transaction signed ${chalk.dim(`(${walletMethod.type})`)}`);
+
+  // Broadcast (if needed) and confirm via viem
+  const transport = options.rpcUrl ? http(options.rpcUrl) : http();
+  const publicClient = createPublicClient({ chain: chainConfig.chain, transport });
+
+  let hash: `0x${string}`;
+  if (result.kind === "sent") {
+    hash = result.txHash;
+  } else {
+    const broadcastSpinner = startSpinner("Broadcasting transaction...");
+    hash = await publicClient.sendRawTransaction({ serializedTransaction: result.raw });
+    broadcastSpinner.stop(`${chalk.green("✓")} Transaction broadcast`);
+  }
+
+  const txLines = [`${label("Tx Hash")}${hash}`];
+  const explorerUrl = getExplorerUrl(chainConfig.chain, hash);
+  if (explorerUrl) {
+    txLines.push(`${label("Explorer")}${chalk.cyan(explorerUrl)}`);
+  }
+  console.log(
+    boxen(txLines.join("\n"), {
+      padding: { left: 1, right: 1, top: 0, bottom: 0 },
+      borderStyle: "round",
+      borderColor: "cyan",
+    }),
+  );
+
+  const confirmSpinner = startSpinner("Waiting for confirmation...");
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  confirmSpinner.stop(`${chalk.green("✓")} Confirmed in block ${chalk.bold(receipt.blockNumber.toString())}`);
+
+  const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
+  printResult(receipt, block.timestamp, chainConfig.chain, hash, label);
+}
+
+function printResult(
+  receipt: { blockNumber: bigint; gasUsed: bigint; effectiveGasPrice: bigint; logs: readonly unknown[] },
+  timestamp: bigint,
+  chain: Chain,
+  hash: `0x${string}`,
+  label: (text: string) => string,
+): void {
+  const events = parseEventLogs({ abi: IdentityRegistryAbi, logs: receipt.logs as any[] });
+
+  const registered = events.find((e) => e.eventName === "Registered");
+  const metadataEvents = events.filter((e) => e.eventName === "MetadataSet");
+
+  const lines: string[] = [];
+
+  if (registered) {
+    const { agentId, agentURI, owner } = registered.args as { agentId: bigint; agentURI: string; owner: string };
+    lines.push(`${label("Agent ID")}${chalk.bold(agentId.toString())}`);
+    lines.push(`${label("Owner")}${owner}`);
+    if (agentURI) {
+      const displayUri = agentURI.length > 80 ? agentURI.slice(0, 80) + "..." : agentURI;
+      lines.push(`${label("URI")}${displayUri}`);
+    }
+    lines.push(`${label("Block")}${receipt.blockNumber}`);
+  } else {
+    lines.push(`${label("Block")}${receipt.blockNumber}`);
+  }
+
+  const time = new Date(Number(timestamp) * 1000).toUTCString();
+  lines.push(`${label("Timestamp")}${time}`);
+
+  const gasPaid = formatEther(receipt.gasUsed * receipt.effectiveGasPrice);
+  const nativeCurrency = chain.nativeCurrency?.symbol ?? "ETH";
+  lines.push(`${label("Gas Paid")}${gasPaid} ${nativeCurrency}`);
+  lines.push(`${label("Tx Hash")}${hash}`);
+  const explorerUrl = getExplorerUrl(chain, hash);
+  if (explorerUrl) {
+    lines.push(`${label("Explorer")}${chalk.cyan(explorerUrl)}`);
+  }
+
+  if (metadataEvents.length > 0) {
+    lines.push("");
+    lines.push(chalk.dim("Metadata"));
+    for (const event of metadataEvents) {
+      const { metadataKey, metadataValue } = event.args as { metadataKey: string; metadataValue: string };
+      lines.push(`${label(metadataKey)}${metadataValue}`);
+    }
+  }
+
+  console.log("");
+  console.log(
+    boxen(lines.join("\n"), {
+      padding: { left: 1, right: 1, top: 0, bottom: 0 },
+      borderStyle: "round",
+      borderColor: "green",
+      title: "Agent registered successfully",
+      titleAlignment: "left",
+    }),
+  );
+}
+
+async function selectChain(): Promise<string> {
+  return select({
+    message: "Select target chain:",
+    choices: Object.keys(CHAINS).map((name) => ({ name, value: name })),
+  });
+}
+
+function getExplorerUrl(chain: Chain, txHash: string): string | null {
+  const explorer = chain.blockExplorers?.default;
+  if (!explorer) return null;
+  return `${explorer.url}/tx/${txHash}`;
+}
