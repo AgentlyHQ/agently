@@ -20,13 +20,7 @@ export function unifiedPaymentMiddleware(config: UnifiedPaymentConfig): RequestH
   );
 
   return async (req: Request, res: Response, next: NextFunction) => {
-    // 1. Check for x402 payment headers first
-    const x402Header = req.headers["x-payment"] || req.headers["x-402-payment"];
-    if (x402Header) {
-      return x402Middleware(req, res, next);
-    }
-
-    // 2. Check for Stripe PaymentIntent ID
+    // 1. Check for Stripe PaymentIntent ID first
     if (config.stripe.enabled) {
       const stripePaymentIntentId = req.headers["x-stripe-payment-intent-id"] as string;
       if (stripePaymentIntentId) {
@@ -42,12 +36,8 @@ export function unifiedPaymentMiddleware(config: UnifiedPaymentConfig): RequestH
       }
     }
 
-    // 3. No valid payment - return 402 with options
-    return res.status(402).json({
-      error: "Payment Required",
-      message: "No valid payment method provided",
-      options: getPaymentOptions(req, config),
-    });
+    // 2. Fall through to x402 middleware (handles x402 headers AND returns proper 402 response)
+    return x402Middleware(req, res, next);
   };
 }
 
