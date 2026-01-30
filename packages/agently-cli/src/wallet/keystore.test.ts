@@ -1,7 +1,7 @@
-import { describe, expect, test, mock, beforeAll } from "bun:test";
+import { describe, expect, test, mock, beforeAll, afterAll } from "bun:test";
 import { encryptKeystoreJsonSync } from "ethers";
 import { sepolia } from "viem/chains";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -26,6 +26,10 @@ beforeAll(() => {
   });
   mkdirSync(testDir, { recursive: true });
   writeFileSync(testKeystorePath, json);
+});
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true });
 });
 
 describe("decryptKeystore", () => {

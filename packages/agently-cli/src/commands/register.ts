@@ -1,6 +1,15 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createPublicClient, encodeFunctionData, formatEther, http, parseEventLogs, type Chain } from "viem";
+import {
+  createPublicClient,
+  encodeFunctionData,
+  formatEther,
+  http,
+  isAddress,
+  parseEventLogs,
+  type Chain,
+  type Log,
+} from "viem";
 import { mainnet, sepolia, baseSepolia, foundry } from "viem/chains";
 import { IdentityRegistryAbi, getIdentityRegistryAddress, CHAIN_ID } from "@agentlyhq/8004";
 import { select } from "@inquirer/prompts";
@@ -48,6 +57,9 @@ export async function register(options: RegisterOptions): Promise<void> {
 
   let registryAddress: `0x${string}`;
   if (options.registry) {
+    if (!isAddress(options.registry)) {
+      throw new CliError(`Invalid registry address: ${options.registry}`);
+    }
     registryAddress = options.registry as `0x${string}`;
   } else if (chainName === "localhost") {
     throw new CliError("--registry is required for localhost (no default contract deployment)");
@@ -62,9 +74,15 @@ export async function register(options: RegisterOptions): Promise<void> {
     args: resolvedUri ? [resolvedUri] : [],
   });
 
+  // Fail fast if both --browser and --rpc-url are explicitly provided
+  if (options.browser && options.rpcUrl) {
+    throw new CliError("--rpc-url cannot be used with browser wallet. The browser wallet uses its own RPC endpoint.");
+  }
+
   // Determine wallet method (may prompt user interactively)
   const walletMethod = await selectWalletMethod(options);
 
+  // Also guard for the case where user selects browser interactively
   if (walletMethod.type === "browser" && options.rpcUrl) {
     throw new CliError("--rpc-url cannot be used with browser wallet. The browser wallet uses its own RPC endpoint.");
   }
@@ -106,7 +124,12 @@ export async function register(options: RegisterOptions): Promise<void> {
     hash = result.txHash;
   } else {
     const broadcastSpinner = startSpinner("Broadcasting transaction...");
-    hash = await publicClient.sendRawTransaction({ serializedTransaction: result.raw });
+    try {
+      hash = await publicClient.sendRawTransaction({ serializedTransaction: result.raw });
+    } catch (err) {
+      broadcastSpinner.stop();
+      throw err;
+    }
     broadcastSpinner.stop(`${chalk.green("✓")} Transaction broadcast`);
   }
 
@@ -124,7 +147,13 @@ export async function register(options: RegisterOptions): Promise<void> {
   );
 
   const confirmSpinner = startSpinner("Waiting for confirmation...");
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  let receipt;
+  try {
+    receipt = await publicClient.waitForTransactionReceipt({ hash });
+  } catch (err) {
+    confirmSpinner.stop();
+    throw err;
+  }
   confirmSpinner.stop(`${chalk.green("✓")} Confirmed in block ${chalk.bold(receipt.blockNumber.toString())}`);
 
   const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
@@ -150,14 +179,14 @@ interface RegistrationResult {
 }
 
 function printResult(
-  receipt: { blockNumber: bigint; gasUsed: bigint; effectiveGasPrice: bigint; logs: readonly unknown[] },
+  receipt: { blockNumber: bigint; gasUsed: bigint; effectiveGasPrice: bigint; logs: Log[] },
   timestamp: bigint,
   chain: Chain,
   chainId: number,
   hash: `0x${string}`,
   label: (text: string) => string,
 ): RegistrationResult {
-  const events = parseEventLogs({ abi: IdentityRegistryAbi, logs: receipt.logs as any[] });
+  const events = parseEventLogs({ abi: IdentityRegistryAbi, logs: receipt.logs });
 
   const registered = events.find((e) => e.eventName === "Registered");
   const metadataEvents = events.filter((e) => e.eventName === "MetadataSet");

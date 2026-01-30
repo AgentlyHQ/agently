@@ -2,8 +2,9 @@
 import { program } from "commander";
 import { register } from "./commands/register.js";
 import { CliError } from "./utils.js";
+import pkg from "../package.json";
 
-program.name("agently-cli").description("CLI for ERC-8004 agent registry operations").version("0.0.1");
+program.name("agently-cli").description("CLI for ERC-8004 agent registry operations").version(pkg.version);
 
 program
   .command("register")

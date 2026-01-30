@@ -1,3 +1,4 @@
+// ethers is used solely for V3 keystore decryption — viem does not support this.
 import { decryptKeystoreJson, isKeystoreJson } from "ethers";
 import { createWalletClient, http, type Chain, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";

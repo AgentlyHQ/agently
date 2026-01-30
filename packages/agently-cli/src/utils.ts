@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 
 export function resolveUri(uri: string): string {
@@ -13,6 +13,10 @@ export function resolveUri(uri: string): string {
 
     if (!existsSync(filePath)) {
       throw new CliError(`File not found: ${filePath}`);
+    }
+
+    if (!statSync(filePath).isFile()) {
+      throw new CliError(`Not a file: ${filePath}`);
     }
 
     const content = readFileSync(filePath, "utf-8");

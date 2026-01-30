@@ -123,6 +123,19 @@ describe("resolveUri", () => {
     }
   });
 
+  test("throws for directory path", async () => {
+    await mkdir(testDir, { recursive: true });
+    const dirWithJsonSuffix = join(testDir, "not-a-file.json");
+    await mkdir(dirWithJsonSuffix, { recursive: true });
+
+    try {
+      expect(() => resolveUri(dirWithJsonSuffix)).toThrow(CliError);
+      expect(() => resolveUri(dirWithJsonSuffix)).toThrow("Not a file");
+    } finally {
+      rmSync(dirWithJsonSuffix, { recursive: true, force: true });
+    }
+  });
+
   test("throws for non-existent .json file", () => {
     expect(() => resolveUri("./non-existent.json")).toThrow(CliError);
     expect(() => resolveUri("./non-existent.json")).toThrow("File not found");

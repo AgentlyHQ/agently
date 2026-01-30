@@ -9,6 +9,8 @@ export interface BrowserSignParams {
   gas?: bigint;
 }
 
+const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export async function signWithBrowser(params: BrowserSignParams): Promise<{ txHash: string }> {
   const { registryAddress, calldata, chainId, chainName, uri, gas } = params;
 
@@ -78,13 +80,20 @@ export async function signWithBrowser(params: BrowserSignParams): Promise<{ txHa
 
   const localUrl = `http://localhost:${server.port}`;
   console.log(`\nOpening browser wallet at ${localUrl}`);
+  console.log(`This page will remain available for ${TIMEOUT_MS / 60_000} minutes.`);
   console.log("If the browser doesn't open, visit the URL manually.\n");
 
   openBrowser(localUrl);
 
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, rej) => {
+    timeoutId = setTimeout(() => rej(new Error("Browser wallet timed out after 5 minutes")), TIMEOUT_MS);
+  });
+
   try {
-    return await resultPromise;
+    return await Promise.race([resultPromise, timeoutPromise]);
   } finally {
+    clearTimeout(timeoutId);
     server.stop();
   }
 }
@@ -103,7 +112,7 @@ function openBrowser(url: string): void {
   });
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -113,11 +122,11 @@ function escapeHtml(s: string): string {
 }
 
 /** JSON.stringify does not escape `</script>`, which breaks out of a script tag. */
-function safeJsonEmbed(value: unknown): string {
+export function safeJsonEmbed(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
-function buildHtml(params: {
+export function buildHtml(params: {
   registryAddress: string;
   calldata: string;
   chainId: number;
