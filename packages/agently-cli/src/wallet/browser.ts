@@ -35,6 +35,7 @@ export async function signWithBrowser(params: BrowserSignParams): Promise<{ txHa
   const jsonHeaders = { "Content-Type": "application/json" };
 
   const server = Bun.serve({
+    hostname: "localhost",
     port: 0,
     error(error) {
       console.error(`Local server error: ${error.message}`);
@@ -109,6 +110,11 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+/** JSON.stringify does not escape `</script>`, which breaks out of a script tag. */
+function safeJsonEmbed(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function buildHtml(params: {
@@ -504,11 +510,11 @@ function buildHtml(params: {
 </div>
 
 <script>
-  const REGISTRY = ${JSON.stringify(registryAddress)};
-  const CALLDATA = ${JSON.stringify(calldata)};
-  const CHAIN_ID_HEX = ${JSON.stringify(chainIdHex)};
+  const REGISTRY = ${safeJsonEmbed(registryAddress)};
+  const CALLDATA = ${safeJsonEmbed(calldata)};
+  const CHAIN_ID_HEX = ${safeJsonEmbed(chainIdHex)};
   const CHAIN_ID = ${chainId};
-  const GAS = ${gas ? JSON.stringify(`0x${gas.toString(16)}`) : "undefined"};
+  const GAS = ${gas ? safeJsonEmbed(`0x${gas.toString(16)}`) : "undefined"};
 
   const registerBtn = document.getElementById("registerBtn");
   const statusEl = document.getElementById("status");
@@ -570,14 +576,14 @@ function buildHtml(params: {
 
   function renderWalletList() {
     discoveringEl.style.display = "none";
-    walletListEl.innerHTML = "";
+    walletListEl.replaceChildren();
 
     for (const [rdns, detail] of discoveredWallets) {
       const btn = document.createElement("button");
       btn.className = "wallet-btn";
       btn.type = "button";
 
-      if (detail.info.icon) {
+      if (detail.info.icon && /^data:image\\//.test(detail.info.icon)) {
         const img = document.createElement("img");
         img.src = detail.info.icon;
         img.alt = "";
@@ -602,7 +608,7 @@ function buildHtml(params: {
 
   function showLegacyConnect() {
     discoveringEl.style.display = "none";
-    walletListEl.innerHTML = "";
+    walletListEl.replaceChildren();
     const btn = document.createElement("button");
     btn.className = "legacy-btn";
     btn.type = "button";
@@ -681,15 +687,38 @@ function buildHtml(params: {
         params: [txParams],
       });
 
+      if (typeof txHash !== "string" || !/^0x[0-9a-f]{64}$/i.test(txHash)) {
+        throw new Error("Wallet returned invalid transaction hash");
+      }
+
       const explorers = { 1: "https://etherscan.io", 11155111: "https://sepolia.etherscan.io", 84532: "https://sepolia.basescan.org" };
       const explorerBase = explorers[CHAIN_ID];
-      const explorerLink = explorerBase ? '<a href="' + explorerBase + '/tx/' + txHash + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">' + explorerBase + '/tx/' + txHash + '</a>' : txHash;
 
-      statusEl.innerHTML = '<div style="margin-bottom:0.5rem">Transaction sent! ' + explorerLink + '</div><div style="color:var(--text-dim)">You can safely close this page and return to the CLI.</div>';
+      statusEl.textContent = "";
+      const msgDiv = document.createElement("div");
+      msgDiv.style.marginBottom = "0.5rem";
+      msgDiv.appendChild(document.createTextNode("Transaction sent! "));
+      if (explorerBase) {
+        const link = document.createElement("a");
+        link.href = explorerBase + "/tx/" + txHash;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.style.color = "inherit";
+        link.style.textDecoration = "underline";
+        link.textContent = explorerBase + "/tx/" + txHash;
+        msgDiv.appendChild(link);
+      } else {
+        msgDiv.appendChild(document.createTextNode(txHash));
+      }
+      const hintDiv = document.createElement("div");
+      hintDiv.style.color = "var(--text-dim)";
+      hintDiv.textContent = "You can safely close this page and return to the CLI.";
+      statusEl.appendChild(msgDiv);
+      statusEl.appendChild(hintDiv);
       statusEl.className = "status success";
       registerBtn.textContent = "Sent!";
 
-      await fetch("/result/" + ${JSON.stringify(nonce)}, {
+      await fetch("/result/" + ${safeJsonEmbed(nonce)}, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ txHash }),

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { program } from "commander";
 import { register } from "./commands/register.js";
 import { CliError } from "./utils.js";
@@ -12,8 +12,9 @@ program
   .option("--chain <chain>", "Target chain (mainnet, sepolia, base-sepolia, localhost)")
   .option("--rpc-url <url>", "Custom RPC URL (uses default if not provided)")
   .option("--registry <address>", "Contract address of the IdentityRegistry (required for localhost)")
-  .option("--keystore <path>", "Path to keystore file (uses Foundry's cast for signing)")
+  .option("--keystore <path>", "Path to Ethereum keystore (V3) JSON file for local signing")
   .option("--browser", "Use browser extension wallet (any extension)")
+  .option("--out-dir <path>", "Write deployment result as JSON to the given directory")
   .addHelpText(
     "after",
     `
@@ -53,6 +54,10 @@ Option Details:
       EIP-6963 compatible wallet extension (MetaMask, Rabby, etc.).
       The wallet handles both signing and broadcasting the transaction.
       Cannot be combined with --rpc-url.
+
+  --out-dir <path>
+      Directory to write the deployment result as a JSON file. The file
+      is named registration-<chainId>-<timestamp>.json.
 
 Environment Variables:
   PRIVATE_KEY    Private key (hex, with or without 0x prefix) used for

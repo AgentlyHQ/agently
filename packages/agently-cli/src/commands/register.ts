@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createPublicClient, encodeFunctionData, formatEther, http, parseEventLogs, type Chain } from "viem";
 import { mainnet, sepolia, baseSepolia, foundry } from "viem/chains";
 import { IdentityRegistryAbi, getIdentityRegistryAddress, CHAIN_ID } from "@agentlyhq/8004";
@@ -26,6 +28,7 @@ export interface RegisterOptions extends WalletOptions {
   chain?: string;
   rpcUrl?: string;
   registry?: string;
+  outDir?: string;
 }
 
 export async function register(options: RegisterOptions): Promise<void> {
@@ -71,7 +74,7 @@ export async function register(options: RegisterOptions): Promise<void> {
   console.log("");
   console.log(chalk.dim("Signing transaction..."));
   console.log(`  ${label("To")}${registryAddress}`);
-  console.log(`  ${label("Data")}${data.slice(0, 10)}${chalk.dim("…" + data.length + " bytes")}`);
+  console.log(`  ${label("Data")}${data.slice(0, 10)}${chalk.dim("…" + (data.length - 2) / 2 + " bytes")}`);
   console.log(`  ${label("Chain")}${chainName}`);
   console.log(`  ${label("Function")}${resolvedUri ? "register(string memory agentURI)" : "register()"}`);
   if (resolvedUri) {
@@ -88,7 +91,11 @@ export async function register(options: RegisterOptions): Promise<void> {
       browser: { chainId: chainConfig.chainId, chainName: chainName, uri: resolvedUri },
     },
   });
-  console.log(`${chalk.green("✓")} Transaction signed ${chalk.dim(`(${walletMethod.type})`)}`);
+  if (result.kind === "signed") {
+    console.log(`${chalk.green("✓")} Transaction signed ${chalk.dim(`(${walletMethod.type} · ${result.address})`)}`);
+  } else {
+    console.log(`${chalk.green("✓")} Transaction signed ${chalk.dim(`(${walletMethod.type})`)}`);
+  }
 
   // Broadcast (if needed) and confirm via viem
   const transport = options.rpcUrl ? http(options.rpcUrl) : http();
@@ -121,26 +128,57 @@ export async function register(options: RegisterOptions): Promise<void> {
   confirmSpinner.stop(`${chalk.green("✓")} Confirmed in block ${chalk.bold(receipt.blockNumber.toString())}`);
 
   const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
-  printResult(receipt, block.timestamp, chainConfig.chain, hash, label);
+  const resultData = printResult(receipt, block.timestamp, chainConfig.chain, chainConfig.chainId, hash, label);
+
+  if (options.outDir) {
+    writeResultJson(options.outDir, resultData);
+  }
+}
+
+interface RegistrationResult {
+  agentId?: string;
+  owner?: string;
+  uri?: string;
+  chainId: number;
+  block: string;
+  timestamp: string;
+  gasPaid: string;
+  nativeCurrency: string;
+  txHash: string;
+  explorer?: string;
+  metadata?: Record<string, string>;
 }
 
 function printResult(
   receipt: { blockNumber: bigint; gasUsed: bigint; effectiveGasPrice: bigint; logs: readonly unknown[] },
   timestamp: bigint,
   chain: Chain,
+  chainId: number,
   hash: `0x${string}`,
   label: (text: string) => string,
-): void {
+): RegistrationResult {
   const events = parseEventLogs({ abi: IdentityRegistryAbi, logs: receipt.logs as any[] });
 
   const registered = events.find((e) => e.eventName === "Registered");
   const metadataEvents = events.filter((e) => e.eventName === "MetadataSet");
 
   const lines: string[] = [];
+  const result: RegistrationResult = {
+    chainId,
+    block: receipt.blockNumber.toString(),
+    timestamp: new Date(Number(timestamp) * 1000).toUTCString(),
+    gasPaid: formatEther(receipt.gasUsed * receipt.effectiveGasPrice),
+    nativeCurrency: chain.nativeCurrency?.symbol ?? "ETH",
+    txHash: hash,
+  };
 
   if (registered) {
     const { agentId, agentURI, owner } = registered.args as { agentId: bigint; agentURI: string; owner: string };
-    lines.push(`${label("Agent ID")}${chalk.bold(agentId.toString())}`);
+    result.agentId = agentId.toString();
+    result.owner = owner;
+    if (agentURI) result.uri = agentURI;
+
+    lines.push(`${label("Agent ID")}${chalk.bold(result.agentId)}`);
     lines.push(`${label("Owner")}${owner}`);
     if (agentURI) {
       const displayUri = agentURI.length > 80 ? agentURI.slice(0, 80) + "..." : agentURI;
@@ -151,23 +189,23 @@ function printResult(
     lines.push(`${label("Block")}${receipt.blockNumber}`);
   }
 
-  const time = new Date(Number(timestamp) * 1000).toUTCString();
-  lines.push(`${label("Timestamp")}${time}`);
-
-  const gasPaid = formatEther(receipt.gasUsed * receipt.effectiveGasPrice);
-  const nativeCurrency = chain.nativeCurrency?.symbol ?? "ETH";
-  lines.push(`${label("Gas Paid")}${gasPaid} ${nativeCurrency}`);
+  lines.push(`${label("Timestamp")}${result.timestamp}`);
+  lines.push(`${label("Gas Paid")}${result.gasPaid} ${result.nativeCurrency}`);
   lines.push(`${label("Tx Hash")}${hash}`);
+
   const explorerUrl = getExplorerUrl(chain, hash);
   if (explorerUrl) {
+    result.explorer = explorerUrl;
     lines.push(`${label("Explorer")}${chalk.cyan(explorerUrl)}`);
   }
 
   if (metadataEvents.length > 0) {
+    result.metadata = {};
     lines.push("");
     lines.push(chalk.dim("Metadata"));
     for (const event of metadataEvents) {
       const { metadataKey, metadataValue } = event.args as { metadataKey: string; metadataValue: string };
+      result.metadata[metadataKey] = metadataValue;
       lines.push(`${label(metadataKey)}${metadataValue}`);
     }
   }
@@ -182,6 +220,19 @@ function printResult(
       titleAlignment: "left",
     }),
   );
+
+  return result;
+}
+
+function writeResultJson(outDir: string, result: RegistrationResult): void {
+  if (!existsSync(outDir)) {
+    mkdirSync(outDir, { recursive: true });
+  }
+
+  const filename = `registration-${result.chainId}-${Date.now()}.json`;
+  const filePath = join(outDir, filename);
+  writeFileSync(filePath, JSON.stringify(result, null, 2) + "\n");
+  console.log(`\n${chalk.green("✓")} Result written to ${chalk.bold(filePath)}`);
 }
 
 async function selectChain(): Promise<string> {

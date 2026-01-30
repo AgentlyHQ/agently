@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "bin": {
-    "agently": "./dist/index.js"
+    "agently-cli": "./dist/index.js"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun --external viem --external @inquirer/prompts --external commander --external chalk --external boxen",

@@ -22,16 +22,12 @@ bunx @agentlyhq/agently-cli register --help
 
 Register a new agent to the IdentityRegistry with multiple wallet options:
 
-#### Using Foundry Keystore (Recommended)
+#### Using Keystore (Recommended)
 
-Uses `cast` from Foundry for secure keystore-based signing:
+Sign with an Ethereum keystore (V3) JSON file:
 
 ```bash
-# With default keystore
 agently-cli register --uri "./metadata.json" --chain sepolia --keystore ~/.foundry/keystores/default
-
-# Create a keystore if you don't have one (read more at https://getfoundry.sh/cast/reference/wallet)
-cast wallet import default --interactive
 ```
 
 #### Using Browser Wallet
@@ -84,7 +80,7 @@ agently-cli register \
 | `--chain <chain>`      | Target chain: `mainnet`, `sepolia`, `base-sepolia`, `localhost` (default: `sepolia`) |
 | `--rpc-url <url>`      | Custom RPC URL (cannot be used with `--browser`)                                     |
 | `--registry <address>` | IdentityRegistry contract address (required for `localhost`)                         |
-| `--keystore <path>`    | Path to Foundry keystore file                                                        |
+| `--keystore <path>`    | Path to Ethereum keystore (V3) JSON file                                             |
 | `--browser`            | Use browser extension wallet                                                         |
 
 ### Environment Variables
@@ -101,15 +97,6 @@ agently-cli register \
 | `sepolia`      | 11155111 | Ethereum Sepolia testnet |
 | `base-sepolia` | 84532    | Base Sepolia testnet     |
 | `localhost`    | 31337    | Local Foundry/Anvil node |
-
-## Prerequisites
-
-For keystore-based signing, install [Foundry](https://book.getfoundry.sh/):
-
-```bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
-```
 
 ## Development
 

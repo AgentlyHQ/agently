@@ -13,7 +13,9 @@ export interface SignOptions {
   browser?: { chainId: number; chainName: string; uri?: string };
 }
 
-export type SignTransactionResult = { kind: "signed"; raw: `0x${string}` } | { kind: "sent"; txHash: `0x${string}` };
+export type SignTransactionResult =
+  | { kind: "signed"; raw: `0x${string}`; address: `0x${string}` }
+  | { kind: "sent"; txHash: `0x${string}` };
 
 export interface SignTransactionParams {
   walletMethod: WalletMethod;
@@ -43,8 +45,8 @@ export async function signTransaction({
       });
     }
     default: {
-      const raw = await signWithWalletClient({ method: walletMethod, tx, chain, rpcUrl });
-      return { kind: "signed", raw };
+      const { raw, address } = await signWithWalletClient({ method: walletMethod, tx, chain, rpcUrl });
+      return { kind: "signed", raw, address };
     }
   }
 }
@@ -69,7 +71,7 @@ async function signViaBrowser({
     gas: tx.gas,
   });
 
-  if (!txHash.startsWith("0x")) {
+  if (typeof txHash !== "string" || !/^0x[0-9a-f]{64}$/i.test(txHash)) {
     throw new CliError(`Invalid transaction hash received from browser wallet: ${txHash}`);
   }
 
@@ -86,12 +88,12 @@ async function signWithWalletClient({
   tx: TxRequest;
   chain: Chain;
   rpcUrl?: string;
-}): Promise<`0x${string}`> {
+}): Promise<{ raw: `0x${string}`; address: `0x${string}` }> {
   const walletClient = await createWalletFromMethod(method, chain, rpcUrl);
 
   const account = walletClient.account;
   if (!account) {
-    throw new Error("Wallet client does not have an account configured");
+    throw new CliError("Wallet client does not have an account configured");
   }
 
   const request = await walletClient.prepareTransactionRequest({
@@ -102,5 +104,6 @@ async function signWithWalletClient({
     ...(tx.gas ? { gas: tx.gas } : {}),
   });
 
-  return walletClient.signTransaction(request);
+  const raw = await walletClient.signTransaction(request);
+  return { raw, address: account.address };
 }

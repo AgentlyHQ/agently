@@ -2,6 +2,7 @@ import type { Chain, WalletClient } from "viem";
 import { select, input, password } from "@inquirer/prompts";
 import { createPrivateKeyWallet } from "./privatekey.js";
 import { createKeystoreWallet } from "./keystore.js";
+import { CliError } from "../utils.js";
 
 export interface WalletOptions {
   keystore?: string;
@@ -59,7 +60,7 @@ export async function selectWalletMethod(options: WalletOptions): Promise<Wallet
       return { type: "privatekey", resolveKey: () => Promise.resolve(key) };
     }
     default:
-      throw new Error("No wallet method selected");
+      throw new CliError("No wallet method selected");
   }
 }
 
@@ -74,7 +75,7 @@ export async function createWalletFromMethod(
     case "keystore":
       return createKeystoreWallet(method.path, chain, rpcUrl);
     case "browser":
-      throw new Error("Browser wallets should use registerWithBrowser, not createWalletFromMethod");
+      throw new CliError("Browser wallets should use registerWithBrowser, not createWalletFromMethod");
   }
 }
 
