@@ -17,7 +17,7 @@
     "@types/bun": "^1",
     "@types/express": "^5",
     "@use-agently/sdk": "^0",
-    "testcontainers": "^11",
+    "testcontainers": "^12",
     "typescript": "^6",
     "viem": "^2.47.2",
     "x402-fl": "^0"
