@@ -79,6 +79,7 @@
               "templates/advanced/sub-agents",
               "templates/advanced/with-custom-server",
               "templates/advanced/with-custom-facilitator",
+              "templates/advanced/with-solana",
               "templates/advanced/with-tests",
               "templates/advanced/fake-llm",
               "templates/advanced/with-express",

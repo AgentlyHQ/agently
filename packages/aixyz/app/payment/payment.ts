@@ -8,9 +8,17 @@ import {
   type HTTPResponseInstructions,
 } from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactSvmScheme } from "@x402/svm/exact/server";
 import type { AcceptsX402, AcceptsX402Multi } from "../../accepts";
 import { normalizeAcceptsX402 } from "../../accepts";
-import { Network, PaymentPayload, PaymentRequirements, VerifyResponse, SettleResponse } from "@x402/core/types";
+import {
+  Network,
+  PaymentPayload,
+  PaymentRequirements,
+  VerifyResponse,
+  SettleResponse,
+  SchemeNetworkServer,
+} from "@x402/core/types";
 import { AixyzConfig } from "@aixyz/config";
 
 // ── x402 Lifecycle Hook Types ──────────────────────────────────────────
@@ -99,6 +107,15 @@ export interface PaymentContext {
 }
 
 /**
+ * Selects the exact-scheme server implementation for a network from its CAIP-2 namespace.
+ * Solana networks (`solana:*`) use the SVM scheme; everything else (`eip155:*`, ...) uses the EVM scheme.
+ */
+export function schemeForNetwork(network: Network): SchemeNetworkServer {
+  const namespace = network.split(":")[0];
+  return namespace === "solana" ? new ExactSvmScheme() : new ExactEvmScheme();
+}
+
+/**
  * Thin wrapper around x402HTTPResourceServer
  */
 export class PaymentGateway {
@@ -125,9 +142,9 @@ export class PaymentGateway {
     });
   }
 
-  /** Register an EVM payment scheme for the given network (e.g. Base mainnet). */
+  /** Register the exact-scheme server for the given network, selected by its CAIP-2 namespace (EVM or SVM). */
   register(network: Network) {
-    this.resourceServer.register(network, new ExactEvmScheme());
+    this.resourceServer.register(network, schemeForNetwork(network));
   }
 
   /** Returns the canonical lookup key for a payment route (e.g. "POST /agent"). */

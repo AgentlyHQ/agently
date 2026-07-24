@@ -132,6 +132,7 @@ That's it. Run `bun run dev` and aixyz auto-generates the server, wires up A2A +
 | [`flight-search`](./examples/flight-search/)                     | Flight search with Stripe payments              |
 | [`local-llm`](./examples/local-llm/)                             | Local LLM via Docker (no external API)          |
 | [`with-custom-facilitator`](./examples/with-custom-facilitator/) | Bring-your-own x402 facilitator                 |
+| [`with-solana`](./examples/with-solana/)                         | x402 payments in USDC on Solana                 |
 | [`with-custom-server`](./examples/with-custom-server/)           | Custom server setup                             |
 | [`with-express`](./examples/with-express/)                       | Express middleware integration                  |
 | [`sub-agents`](./examples/sub-agents/)                           | Multiple A2A endpoints from one deployment      |
@@ -161,7 +162,7 @@ See the [CLI reference](https://aixyz.sh/packages/aixyz) for all options.
 
 **MCP (Model Context Protocol)** — Expose tools to any MCP client (Claude Desktop, VS Code, Cursor).
 
-**x402** — HTTP 402 micropayments. Per-request payment with cryptographic proof, verified on-chain.
+**x402** — HTTP 402 micropayments. Per-request payment with cryptographic proof, verified on-chain across EVM chains and Solana.
 
 **ERC-8004** — On-chain agent identity on Ethereum, Base, Polygon, Scroll, Monad, BSC, or Gnosis.
 

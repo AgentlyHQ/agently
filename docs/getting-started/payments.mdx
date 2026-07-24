@@ -97,22 +97,37 @@ export const accepts: Accepts = [
 
 ## Payment Networks
 
-Configure the payment network in `aixyz.config.ts`:
+Configure the payment network in `aixyz.config.ts`. Networks are [CAIP-2](https://chainagnostic.org/CAIPs/caip-2) identifiers — EVM chains use the `eip155:*` namespace, Solana uses `solana:*`:
 
-| Network      | CAIP-2 ID      |
-| ------------ | -------------- |
-| Base         | `eip155:8453`  |
-| Base Sepolia | `eip155:84532` |
-| Ethereum     | `eip155:1`     |
+| Network             | CAIP-2 ID                                 |
+| ------------------- | ----------------------------------------- |
+| Base                | `eip155:8453`                             |
+| Base Sepolia        | `eip155:84532`                            |
+| Ethereum            | `eip155:1`                                |
+| Solana mainnet-beta | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` |
+| Solana devnet       | `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` |
+
+aixyz registers the correct payment scheme (EVM or Solana) automatically from the network's namespace — no extra setup. On Solana, prices settle as USDC and `payTo` is a base58 wallet address (not `0x...`).
 
 Switch networks per environment:
 
 ```typescript
+// EVM
 x402: {
   payTo: "0x...",
   network: process.env.NODE_ENV === "production" ? "eip155:8453" : "eip155:84532",
 },
+
+// Solana
+x402: {
+  payTo: "So1111...", // base58 wallet address
+  network: process.env.NODE_ENV === "production"
+    ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+    : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+},
 ```
+
+See the [Solana Agent template](/templates/advanced/with-solana) for a working example.
 
 ## Facilitators
 
@@ -123,6 +138,8 @@ Payment verification is handled by a facilitator service:
 | Default      | Always available             | `https://x402.use-agently.com/facilitator` |
 | Coinbase CDP | When `CDP_API_KEY_ID` is set | Auto-configured                            |
 | Custom       | Set `X402_FACILITATOR_URL`   | Your custom URL                            |
+
+The default facilitator settles on both EVM chains and Solana. To settle Solana payments elsewhere, point `X402_FACILITATOR_URL` at any Solana-capable facilitator — for example [PayAI](https://facilitator.payai.network).
 
 ### Custom Facilitator
 
