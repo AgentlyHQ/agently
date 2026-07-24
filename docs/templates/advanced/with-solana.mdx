@@ -1,0 +1,80 @@
+---
+title: "Solana Agent"
+description: "Template for an x402 agent that gets paid in USDC on Solana"
+---
+
+<Info>**Source:** [`examples/with-solana`](https://github.com/AgentlyHQ/aixyz/tree/main/examples/with-solana)</Info>
+
+## Overview
+
+This template demonstrates an agent that accepts x402 payments in **USDC on Solana**. Solana networks are configured exactly like EVM chains — as CAIP-2 identifiers in `aixyz.config.ts` — and aixyz registers the Solana (SVM) payment scheme automatically.
+
+## Project Structure
+
+```
+with-solana/
+├── aixyz.config.ts           # Agent metadata + Solana network
+├── app/
+│   ├── agent.ts              # Agent with a SOL/lamports tool
+│   ├── accepts.ts            # Facilitator configuration (PayAI)
+│   └── tools/
+│       └── sol-lamports.ts   # SOL ⇄ lamports converter
+├── package.json
+└── vercel.json
+```
+
+## Solana Network
+
+Set a `solana:*` network and a base58 `payTo` wallet in `aixyz.config.ts`:
+
+```typescript title="aixyz.config.ts"
+x402: {
+  payTo: process.env.X402_PAY_TO ?? "So11111111111111111111111111111111111111112",
+  network: process.env.NODE_ENV === "production"
+    ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" // Solana mainnet-beta
+    : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", // Solana devnet
+},
+```
+
+That is the only change from an EVM agent — aixyz picks the SVM `exact` scheme from the `solana:` namespace.
+
+## Facilitator
+
+`app/accepts.ts` points payment verification at a Solana-capable facilitator:
+
+```typescript title="app/accepts.ts"
+import { HTTPFacilitatorClient } from "aixyz/accepts";
+
+export const facilitator = new HTTPFacilitatorClient({
+  url: process.env.X402_FACILITATOR_URL ?? "https://facilitator.payai.network",
+});
+```
+
+aixyz's default facilitator also settles Solana, so `app/accepts.ts` is optional.
+
+## Key Features
+
+- **Solana payments** — Charge and settle in USDC on Solana via x402
+- **CAIP-2 config** — Same `network` field as EVM; no special Solana wiring
+- **Auto scheme selection** — `solana:*` → SVM scheme, `eip155:*` → EVM scheme
+- **BYO facilitator** — Point at PayAI, the default, or any x402-compatible service
+
+## Payment
+
+The agent charges `$0.005` per request, settled as USDC on Solana.
+
+## Environment Variables
+
+| Variable               | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `OPENAI_API_KEY`       | OpenAI API key                                                  |
+| `X402_PAY_TO`          | Solana wallet (base58) to receive payments                      |
+| `X402_FACILITATOR_URL` | Custom facilitator URL (defaults to PayAI's Solana facilitator) |
+
+## Running
+
+```bash
+cd examples/with-solana
+bun install
+bun run dev
+```

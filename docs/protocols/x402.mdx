@@ -44,6 +44,20 @@ export const accepts: Accepts = {
 
 Prices are USD strings: `"$0.005"`, `"$0.01"`, `"$0.0001"`.
 
+### Networks
+
+The `network` is a [CAIP-2](https://chainagnostic.org/CAIPs/caip-2) identifier. aixyz supports both EVM chains (`eip155:*`, e.g. `eip155:8453` for Base) and Solana (`solana:*`), selecting the correct payment scheme automatically:
+
+```typescript
+export const accepts: Accepts = {
+  scheme: "exact",
+  price: "$0.005",
+  network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", // Solana mainnet-beta
+};
+```
+
+On Solana, prices settle as USDC and `payTo` is a base58 address. See the [Solana Agent template](/templates/advanced/with-solana).
+
 ## Per-Agent and Per-Tool Pricing
 
 Agents and tools can each declare their own `accepts` export, enabling granular pricing:
